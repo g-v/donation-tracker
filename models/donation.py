@@ -134,7 +134,7 @@ class DonorManager(models.Manager):
 
 class Donor(models.Model):
   objects = DonorManager()
-  email = models.EmailField(max_length=128,verbose_name='Contact Email')
+  email = models.EmailField(max_length=128,blank=True,null=True,unique=True,verbose_name='Contact Email')
   alias = models.CharField(max_length=32,null=True,blank=True)
   firstname = models.CharField(max_length=64,blank=True,verbose_name='First Name')
   lastname = models.CharField(max_length=64,blank=True,verbose_name='Last Name')
@@ -149,8 +149,8 @@ class Donor(models.Model):
   addresscountry = models.CharField(max_length=128,blank=True,null=False,verbose_name='Country')
 
   # Donor specific info
-  paypalemail = models.EmailField(max_length=128,unique=True,null=True,blank=True,verbose_name='Paypal Email')
-
+  paypalemail = models.EmailField(max_length=128,unique=True,null=True,blank=True,verbose_name='Paypal Email', help_text="The most recent paypal e-mail we have on record for this donor (last known paypal email)")
+  paypal_payer_id = models.CharField(max_length=13, unique=True, null=True, blank=True, verbose_name='Paypal Payer ID', help_text='True unique ID per paypal user (as e-mail may not be unique)')
   class Meta:
     app_label = 'tracker'
     permissions = (
@@ -165,6 +165,8 @@ class Donor(models.Model):
       self.alias = None
     if self.visibility == 'ALIAS' and not self.alias:
       raise ValidationError("Cannot set Donor visibility to 'Alias Only' without an alias")
+    if not self.email:
+      self.email = None
     if not self.paypalemail:
       self.paypalemail = None
 

@@ -77,7 +77,9 @@ def initialize_paypal_donation(ipnObj):
     'addresszip'     : ipnObj.address_zip,
     'visibility'      : 'ANON',
   }
-  donor,created = Donor.objects.get_or_create(paypalemail=ipnObj.payer_email.lower(),defaults=defaults)
+  donor,created = Donor.objects.get_or_create(paypal_payer_id=ipnObj.payer_id,defaults=defaults)
+  donor.paypalemail = ipnObj.payer_email
+  donor.save()
   
   fill_donor_address(donor, ipnObj)
 
@@ -141,13 +143,10 @@ def initialize_paypal_donation(ipnObj):
   # I think we only care if the _donation_ was freshly created
   return donation
 
-def get_paypal_donation(paypalemail, amount, transactionid):
-  donations = Donation.objects.filter(amount=amount, domain='PAYPAL', domainId=transactionid)
+def get_paypal_donation(payerId, amount, transactionid):
+  donations = Donation.objects.filter(donor__payerId=payerId, amount=amount, domain='PAYPAL', domainId=transactionid)
   if donations.exists():
-    donation = donations[0]
-    donors = Donor.objects.filter(paypalemail=paypalemail)
-    if donors.exists() and donation.donor.id == donors[0].id:
-      return donation
+    return donations[0]
   return None
 
 _reasonCodeDetails = {

@@ -44,8 +44,8 @@ _GeneralFields = {
   'bidsuggestion' : [ 'name', 'bid' ],
   'donationbid'   : [ 'donation', 'bid' ],
   'donation'      : [ 'donor', 'comment', 'modcomment' ],
-  'donor'         : [ 'email', 'alias', 'firstname', 'lastname', 'paypalemail' ],
-  'event'         : [ 'short', 'name' ],
+  'donor'         : [ 'email', 'alias', 'firstname', 'lastname', 'paypalemail', ],
+  'event'         : [ 'short', 'name', 'paypalemail' ],
   'prize'         : [ 'name', 'description', 'shortdescription', 'prizewinner', 'provider' ],
   'prizeticket'   : [ 'prize', 'donation', ],
   'prizecategory' : [ 'name', ],
@@ -175,6 +175,7 @@ _SpecificFields = {
     'lastname'   : 'lastname__icontains',
     'alias'      : 'alias__icontains',
     'email'      : 'email__icontains',
+    'paypalemail': 'paypalemail__icontains',
     'visibility' : 'visibility__iexact',
   },
   'donorcache': {
@@ -188,6 +189,7 @@ _SpecificFields = {
   'event': {
     'name'        : 'name__icontains',
     'short'       : 'short__iexact',
+    'paypalemail' : 'paypalemail__icontains',
     'locked'      : 'locked',
     'date_lte'    : 'date__lte',
     'date_gte'    : 'date__gte',
