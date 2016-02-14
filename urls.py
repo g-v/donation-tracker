@@ -36,7 +36,6 @@ urlpatterns = patterns(
     url(r'^(?P<event>\d+|)$', 'index'),
     url(r'^paypal_return/$', 'paypal_return', name='paypal_return'),
     url(r'^paypal_cancel/$', 'paypal_cancel', name='paypal_cancel'),
-    url(r'^ipn/$', 'ipn', name='ipn'),
     url(r'^admin/refresh_schedule/$', 'refresh_schedule'),  # ugly hack: has to be here or we get auth intercepted
     url(r'^user/index/$', 'user_index', name='user_index'),
     url(r'^user/user_prize/(?P<prize>\d+)$', 'user_prize', name='user_prize'),
@@ -52,5 +51,8 @@ urlpatterns = patterns(
     url(r'^user/password_change_done/$', 'password_change_done', name='password_change_done'),
     url(r'^user/register/$', 'register', name='register'),
     url(r'^user/confirm_registration/$', 'confirm_registration', name='confirm_registration'),
+) + patterns(
+    'paypal.standard.ipn.views',
+    url(r'^ipn/$', 'ipn', name='ipn'),
 )
 

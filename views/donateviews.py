@@ -30,7 +30,6 @@ __all__ = [
   'paypal_cancel',
   'paypal_return',
   'donate',
-  'ipn',
   ]
 
 @csrf_exempt
@@ -91,7 +90,7 @@ def donate(request, event):
           "cmd": "_donations",
           "business": donation.event.paypalemail,
           "item_name": donation.event.receivername,
-          "notify_url": serverURL + reverse('tracker.views.ipn'),
+          "notify_url": serverURL + reverse('paypal.standard.ipn.views.ipn'),
           "return_url": serverURL + reverse('tracker.views.paypal_return'),
           "cancel_return": serverURL + reverse('tracker.views.paypal_cancel'),
           "custom": str(donation.id) + ":" + donation.domainId,
@@ -157,71 +156,3 @@ def donate(request, event):
 
   return views_common.tracker_response(request, "tracker/donate.html", { 'event': event, 'bidsform': bidsform, 'prizesform': prizesform, 'commentform': commentform, 'hasBids': bids.count() > 0, 'bidsJson': bidsJson, 'hasTicketPrizes': ticketPrizes.count() > 0, 'ticketPrizesJson': ticketPrizesJson, 'prizes': prizes})
 
-@csrf_exempt
-@never_cache
-def ipn(request):
-  donation = None
-  ipnObj = None
-
-  if request.method == 'GET' or len(request.POST) == 0:
-    return views_common.tracker_response(request, "tracker/badobject.html", {})
-
-  try:
-    ipnObj = paypalutil.create_ipn(request)
-    ipnObj.save()
-
-    donation = paypalutil.initialize_paypal_donation(ipnObj)
-    donation.save()
-
-    if donation.transactionstate == 'PENDING':
-      reasonExplanation, ourFault = paypalutil.get_pending_reason_details(ipnObj.pending_reason)
-      if donation.event.pendingdonationemailtemplate:
-        formatContext = {
-          'event': donation.event,
-          'donation': donation,
-          'donor': donor,
-          'pending_reason': ipnObj.pending_reason,
-          'reason_info': reasonExplanation if not ourFault else '',
-        }
-        post_office.mail.send(recipients=[donation.donor.email], sender=donation.event.donationemailsender, template=donation.event.pendingdonationemailtemplate, context=formatContext)
-      # some pending reasons can be a problem with the receiver account, we should keep track of them
-      if ourFault:
-        paypalutil.log_ipn(ipnObj, 'Unhandled pending error')
-    elif donation.transactionstate == 'COMPLETED':
-      if donation.event.donationemailtemplate != None:
-        formatContext = {
-          'donation': donation,
-          'donor': donation.donor,
-          'event': donation.event,
-          'prizes': viewutil.get_donation_prize_info(donation),
-        }
-        post_office.mail.send(recipients=[donation.donor.email], sender=donation.event.donationemailsender, template=donation.event.donationemailtemplate, context=formatContext)
-
-      # TODO: this should eventually share code with the 'search' method, to
-      postbackData = {
-        'id': donation.id,
-        'timereceived': str(donation.timereceived),
-        'comment': donation.comment,
-        'amount': donation.amount,
-        'donor__visibility': donation.donor.visibility,
-        'donor__visiblename': donation.donor.visible_name(),
-      }
-      postbackJSon = json.dumps(postbackData, ensure_ascii=False, cls=serializers.json.DjangoJSONEncoder)
-      postbacks = models.PostbackURL.objects.filter(event=donation.event)
-      for postback in postbacks:
-        opener = urllib2.build_opener()
-        req = urllib2.Request(postback.url, postbackJSon, headers={'Content-Type': 'application/json; charset=utf-8'})
-        response = opener.open(req, timeout=5)
-    elif donation.transactionstate == 'CANCELLED':
-      # eventually we may want to send out e-mail for some of the possible cases
-      # such as payment reversal due to double-transactions (this has happened before)
-      paypalutil.log_ipn(ipnObj, 'Cancelled/reversed payment')
-
-  except Exception as inst:
-    # just to make sure we have a record of it somewhere
-    print("ERROR IN IPN RESPONSE, FIX IT")
-    if ipnObj:
-      paypalutil.log_ipn(ipnObj, "{0} \n {1}. POST data : {2}".format(inst, traceback.format_exc(inst), request.POST))
-    else:
-      viewutil.tracker_log('paypal', 'IPN creation failed: {0} \n {1}. POST data : {2}'.format(inst, traceback.format_exc(inst), request.POST))
-  return HttpResponse("OKAY")
