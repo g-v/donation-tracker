@@ -218,7 +218,8 @@ class DonorCache(models.Model):
   @receiver(signals.post_save, sender=Donation)
   @receiver(signals.post_delete, sender=Donation)
   def donation_update(sender, instance, **args):
-    if not instance.donor: return
+    if not instance.donor:
+      return
     cache,c = DonorCache.objects.get_or_create(event=instance.event,donor=instance.donor)
     cache.update()
     if cache.donation_count:

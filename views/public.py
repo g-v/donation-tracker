@@ -39,13 +39,13 @@ def index(request,event=None):
   if event.id:
     eventParams['event'] = event.id
 
-  agg = filters.run_model_query('donation', eventParams, user=request.user, mode='user').aggregate(amount=Sum('amount'), count=Count('amount'), max=Max('amount'), avg=Avg('amount'))
+  agg = filters.run_model_query('donation', eventParams).aggregate(amount=Sum('amount'), count=Count('amount'), max=Max('amount'), avg=Avg('amount'))
   agg['target'] = event.targetamount
   count = {
-    'runs' : filters.run_model_query('run', eventParams, user=request.user).count(),
-    'prizes' : filters.run_model_query('prize', eventParams, user=request.user).count(),
-    'bids' : filters.run_model_query('bid', eventParams, user=request.user).count(),
-    'donors' : filters.run_model_query('donorcache', eventParams, user=request.user).values('donor').distinct().count(),
+    'runs' : filters.run_model_query('run', eventParams).count(),
+    'prizes' : filters.run_model_query('prize', eventParams).count(),
+    'bids' : filters.run_model_query('bid', eventParams).count(),
+    'donors' : filters.run_model_query('donorcache', eventParams).values('donor').distinct().count(),
   }
 
   if 'json' in request.GET:
@@ -69,7 +69,7 @@ def bidindex(request, event=None):
   else:
     return HttpResponseRedirect(reverse('tracker.views.bidindex', args=(Event.objects.latest().id,)))
 
-  bids = filters.run_model_query('bid', searchParams, user=request.user)
+  bids = filters.run_model_query('bid', searchParams)
   bids = bids.filter(parent=None)
   total = bids.aggregate(Sum('total'))['total__sum'] or Decimal('0.00')
   choiceTotal = bids.filter(goal=None).aggregate(Sum('total'))['total__sum'] or Decimal('0.00')
@@ -102,7 +102,6 @@ def bid(request, id):
       order = -1
 
     bid = Bid.objects.get(pk=id)
-    bids = bid.get_descendants(include_self=True).select_related('speedrun','event', 'parent').prefetch_related('options')
     ancestors = bid.get_ancestors()
     event = bid.event if bid.event else bid.speedrun.event
 
@@ -129,42 +128,34 @@ def donorindex(request,event=None):
   page = request.GET.get('page', 1)
   sort = request.GET.get('sort', 'name')
 
-  if sort not in orderdict:
-    sort = 'name'
-
   try:
     order = int(request.GET.get('order', 1))
   except ValueError:
     order = 1
 
-  donors = DonorCache.objects.filter(event=event.id if event.id else None).order_by(*orderdict[sort])
+  donors = DonorCache.objects.filter(event=event.id if event.id else None).exclude(donor__visibility=='ANON').order_by(*orderdict[sort])
   if order == -1:
     donors = donors.reverse()
 
-  fulllist = request.user.has_perm('tracker.view_full_list') and page == 'full'
   pages = paginator.Paginator(donors,50)
 
-  if fulllist:
-    pageinfo = { 'paginator' : pages, 'has_previous' : False, 'has_next' : False, 'paginator.num_pages' : pages.num_pages }
-    page = 0
-  else:
-    try:
-      pageinfo = pages.page(page)
-    except paginator.PageNotAnInteger:
-      pageinfo = pages.page(1)
-    except paginator.EmptyPage:
-      pageinfo = pages.page(pages.num_pages)
-      page = pages.num_pages
-    donors = pageinfo.object_list
+  try:
+    pageinfo = pages.page(page)
+  except paginator.PageNotAnInteger:
+    pageinfo = pages.page(1)
+  except paginator.EmptyPage:
+    pageinfo = pages.page(pages.num_pages)
+    page = pages.num_pages
+  donors = pageinfo.object_list
 
-  return views_common.tracker_response(request, 'tracker/donorindex.html', { 'donors' : donors, 'event' : event, 'pageinfo' : pageinfo, 'page' : page, 'fulllist' : fulllist, 'sort' : sort, 'order' : order })
+  return views_common.tracker_response(request, 'tracker/donorindex.html', { 'donors' : donors, 'event' : event, 'pageinfo' : pageinfo, 'page' : page, 'sort' : sort, 'order' : order })
 
 
 def donor(request, id, event=None):
   try:
     event = viewutil.get_event(event)
     cache = DonorCache.objects.get(donor=id,event=event.id if event.id else None)
-    if cache.visibility == 'ANON' and not request.user.has_perm('tracker.view_emails'):
+    if cache.visibility == 'ANON':
       return views_common.tracker_response(request, template='tracker/badobject.html', status=404)
     donations = cache.donation_set.filter(transactionstate='COMPLETED')
 
@@ -182,15 +173,11 @@ def donor(request, id, event=None):
 def donationindex(request,event=None):
   event = viewutil.get_event(event)
   orderdict = {
-    'name'   : ('donor__lastname', 'donor__firstname'),
     'amount' : ('amount', ),
     'time'   : ('timereceived', ),
   }
   page = request.GET.get('page', 1)
   sort = request.GET.get('sort', 'time')
-
-  if sort not in orderdict:
-    sort = 'time'
 
   try:
     order = int(request.GET.get('order', -1))
@@ -209,26 +196,21 @@ def donationindex(request,event=None):
   if event.id:
     searchParams['event'] = event.id
 
-  donations = filters.run_model_query('donation', searchParams, user=request.user)
-  print donations
+  donations = filters.run_model_query('donation', searchParams)
   donations = views_common.fixorder(donations, orderdict, sort, order)
-  fulllist = request.user.has_perm('tracker.view_full_list') and page == 'full'
+
   agg = donations.aggregate(amount=Sum('amount'), count=Count('amount'), max=Max('amount'), avg=Avg('amount'))
   pages = paginator.Paginator(donations,50)
-  if fulllist:
-    pageinfo = { 'paginator' : pages, 'has_previous' : False, 'has_next' : False, 'paginator.num_pages' : pages.num_pages }
-    page = 0
-  else:
-    try:
-      pageinfo = pages.page(page)
-    except paginator.PageNotAnInteger:
-      pageinfo = pages.page(1)
-    except paginator.EmptyPage:
-      pageinfo = pages.page(pages.num_pages)
-      page = pages.num_pages
-    donations = pageinfo.object_list
+  try:
+    pageinfo = pages.page(page)
+  except paginator.PageNotAnInteger:
+    pageinfo = pages.page(1)
+  except paginator.EmptyPage:
+    pageinfo = pages.page(pages.num_pages)
+    page = pages.num_pages
+  donations = pageinfo.object_list
 
-  return views_common.tracker_response(request, 'tracker/donationindex.html', { 'searchForm': searchForm, 'donations' : donations, 'pageinfo' :  pageinfo, 'page' : page, 'fulllist' : fulllist, 'agg' : agg, 'sort' : sort, 'order' : order, 'event': event })
+  return views_common.tracker_response(request, 'tracker/donationindex.html', { 'searchForm': searchForm, 'donations' : donations, 'pageinfo' :  pageinfo, 'page' : page, 'agg' : agg, 'sort' : sort, 'order' : order, 'event': event })
 
 def donation(request,id):
   try:
@@ -260,7 +242,7 @@ def runindex(request,event=None):
   if event.id:
     searchParams['event'] = event.id
 
-  runs = filters.run_model_query('run', searchParams, user=request.user)
+  runs = filters.run_model_query('run', searchParams)
   runs = runs.annotate(hasbids=Sum('bids'))
 
   return views_common.tracker_response(request, 'tracker/runindex.html', { 'searchForm': searchForm, 'runs' : runs, 'event': event })
@@ -270,10 +252,9 @@ def run(request,id):
     run = SpeedRun.objects.get(pk=id)
     runners = run.runners.all()
     event = run.event
-    bids = filters.run_model_query('bid', {'run': id}, user=request.user)
+    bids = filters.run_model_query('bid', {'run': id})
     bids = viewutil.get_tree_queryset_descendants(Bid, bids, include_self=True).select_related('speedrun','event', 'parent').prefetch_related('options')
     topLevelBids = filter(lambda bid: bid.parent == None, bids)
-    bids = topLevelBids
 
     return views_common.tracker_response(request, 'tracker/run.html', { 'event': event, 'run' : run, 'runners': runners, 'bids' : topLevelBids })
 
@@ -294,7 +275,7 @@ def prizeindex(request,event=None):
   if event.id:
     searchParams['event'] = event.id
 
-  prizes = filters.run_model_query('prize', searchParams, user=request.user)
+  prizes = filters.run_model_query('prize', searchParams)
   prizes = prizes.select_related('startrun','endrun','category').prefetch_related('prizewinner_set')
   return views_common.tracker_response(request, 'tracker/prizeindex.html', { 'searchForm': searchForm, 'prizes' : prizes, 'event': event })
 

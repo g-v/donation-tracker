@@ -7,7 +7,7 @@
 
 {% block content %}
 	<h2 class="text-center">
-		{% name cache %}<br />
+		{{ cache.visible_name }}<br />
 		<small>
 			{% trans "Total Donations" %}:
 		{{ cache.donation_total|money }} ({{ cache.donation_count }}) &mdash;
